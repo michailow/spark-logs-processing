@@ -1,6 +1,27 @@
-# -*- coding: utf-8 -*-
 """
-Spark ETL script
+This Python module contains an Apache Spark ETL job. It can be
+submitted to a Spark cluster (or locally) using the 'spark-submit'
+command found in the '/bin' directory of all Spark distributions
+(necessary for running any Spark job, locally or otherwise). For
+example, this example script can be executed as follows:
+    
+    $SPARK_HOME/bin/spark-submit \
+    --master spark://localhost:7077 \
+    --py-files packages.zip \
+    --files configs/etl_config.json \
+    jobs/etl_job.py
+    
+where packages.zip contains Python modules required by ETL job (in
+this example it contains a class to provide access to Spark's logger),
+which need to be made available to each executor process on every node
+in the cluster; etl_config.json is a text file sent to the cluster,
+containing a JSON object with all of the configuration parameters
+required by the ETL job; and, etl_job.py contains the Spark application
+to be executed by a driver process on the Spark master node.
+
+For more details on submitting Spark applications, please see here:
+http://spark.apache.org/docs/latest/submitting-applications.html
+
 """
 
 
@@ -19,9 +40,10 @@ spark = SparkSession.spark = SparkSession.builder \
     .getOrCreate()
     
     
-def extract():
-    """
-    open file
+def extractData():
+    """Load data from txt files
+    
+    :return: Spark DataFrame
     """
     dfRaw = spark.read.text("raw_logs/*/*.txt")
     return dfRaw
@@ -54,11 +76,10 @@ def getCurrentOffset(string):
 
 
 def transform(dfRaw):
-    """
-    main function with all transformations.
-    because spark processing every line in file as separate
-    row, it starting working with 2 DFs.
-    then, it merging them
+    """Transform original dataset.
+    
+    :param dfRaw: Original Spark DataFrame
+    :return: Transformed Spark DataFrame
     """
     dfTime = dfRaw.filter(dfRaw.value.startswith('{'))
     getDateUDF = udf(getDate, StringType())
@@ -105,17 +126,23 @@ def transform(dfRaw):
     return dfFinal
 
 
-def load(dfFinal):
-    '''
-    saves DataFrame into csv tabular file format file
-    '''
-    dfFinal.toPandas().to_csv('output_file.csv')
+def load(dfTransformed):
+    """Saves DataFrame into csv
+    
+    :param dfTransformed: Df to be saved
+    :return: None
+    """
+    dfTransformed.toPandas().to_csv('output_file.csv')
     
     
 def main():
-    dfRaw = extract()
-    dfFinal = transform(dfRaw)
-    load(dfFinal)
+    """Main ETL script definition
+    
+    :return: None
+    """
+    dfRaw = extractData()
+    dfTransformed = transform(dfRaw)
+    load(dfTransformed)
     
 if __name__ == '__main__':
     main()

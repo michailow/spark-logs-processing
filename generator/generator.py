@@ -11,13 +11,12 @@ import os
 import random
 
 
-FOLDERNAME = 'raw_logs'
-
-def createJobsFolder(FOLDERNAME):
+def createJobsFolder():
+    """Create folders for the logs if not exits
+    
+    :return: directory for logs
     """
-    create folders for the logs if not exits
-    then it return a path of that folder
-    """
+    FOLDERNAME = 'raw_logs'
     currentDirectory = os.getcwd()
     finalDirectory = os.path.join(currentDirectory, FOLDERNAME)
     if not os.path.exists(finalDirectory):
@@ -26,9 +25,10 @@ def createJobsFolder(FOLDERNAME):
 
 
 def checkLastJob(jobsFolder):
-    """
-    in case there are already folders with logs
-    count number of the jobs folders
+    """Count number of folders in folder
+    
+    :param jobsFolder: directory with jobs
+    :return: number of created jobs
     """
     allFolders = os.listdir(jobsFolder)
     jobsFolders = [f for f in allFolders if f.startswith('job')]
@@ -37,8 +37,11 @@ def checkLastJob(jobsFolder):
 
 
 def createFolder(jobsFolder, jobNumber):
-    """
-    creating folders for the jobs
+    """Creating folders for the jobs
+    
+    :param jobsFolder: directory with jobs
+    :param jobNumber: number of exiting jobs
+    :return: directory with job folder
     """
     folderName = "job" + str(jobNumber)
     directory = os.path.join(jobsFolder, folderName)
@@ -46,14 +49,14 @@ def createFolder(jobsFolder, jobNumber):
     return directory
 
 
-batchWatermarkMs = 0
-METADATA_START = 1626616200136
-METADATA_END = 1636042843000
-
 def generateMetaData():
+    """Genetaring random metadata for logs
+    
+    :return: string with logs metadata
     """
-    genetaring random metadata for logs
-    """
+    batchWatermarkMs = 0
+    METADATA_START = 1626616200136
+    METADATA_END = 1636042843000
     batchTimestampMs = random.randrange(METADATA_START,
                                         METADATA_END)
     metaData = str({"batchWatermarkMs":batchWatermarkMs,
@@ -61,12 +64,14 @@ def generateMetaData():
     return metaData
 
 
-MAX_OFFSET = 200
-
 def generateCommitInfo(topic, partition):
+    """Creating commit info layer for logs file
+    
+    :param topic: log topic name
+    :param partition: log partition number
+    :return: data for logs
     """
-    creating commit info layer for logs file
-    """
+    MAX_OFFSET = 200
     offset = random.choice(range(1, MAX_OFFSET))
     commit = '"{topic}": {{"{partition}" :'\
             ' "{offset}"}}'.format(topic=topic,
@@ -75,25 +80,27 @@ def generateCommitInfo(topic, partition):
     return commit
     
 
-topicsFile = 'topics'
-
 def openTopics():
-    """
-    opens topics file
-    """
+    """Opens topics file
     
+    :return: list of topics
+    """
+    topicsFile = 'topics'
     with open(topicsFile) as f:
         topics = f.read().split()
     return topics
 
 
 def generateLogs(currentFolder, MAX_PARTITIONS):
-    """
-    function open a topics file to get list of all topics
+    """Function open a topics file to get list of all topics
     then for each topic it creating random number of partions
     for each partition functions creating file
     and filling then with random-generater data
     in accordance with the requirements
+    
+    :param currentFolder: job folder
+    :param MAX_PARTITIONS: number of max partitions
+    :return: None
     """
     topics = openTopics()
     for topic in topics:
@@ -119,7 +126,12 @@ def generator(NUMBER_OF_JOBS, MAX_PARTITIONS):
     """
     function generating folders for jobs
     and then filling them with generated data
+    
+    :param NUMBER_OF_JOBS: number of jobs to create
+    :param MAX_PARTITIONS: number of max partitions
+    :return: None
     """
+    FOLDERNAME = 'raw_logs'
     jobsFolder = createJobsFolder(FOLDERNAME)
     lastJob = checkLastJob(jobsFolder)
     
