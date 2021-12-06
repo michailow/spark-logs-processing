@@ -131,8 +131,7 @@ def generator(NUMBER_OF_JOBS, MAX_PARTITIONS):
     :param MAX_PARTITIONS: number of max partitions
     :return: None
     """
-    FOLDERNAME = 'raw_logs'
-    jobsFolder = createJobsFolder(FOLDERNAME)
+    jobsFolder = createJobsFolder()
     lastJob = checkLastJob(jobsFolder)
     
     for nJobs in range(1, NUMBER_OF_JOBS):
