@@ -20,7 +20,7 @@ import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType
 from pyspark.sql.functions import monotonically_increasing_id, \
-    row_number, input_file_name, udf
+    row_number, input_file_name, udf, substring
 from pyspark.sql.window import Window
 
 
@@ -69,18 +69,6 @@ def getJobName(string):
     return job
 
 
-def cutString(string, n1, n2):
-    """Cuts row
-    
-    :param string: row
-    :param n1: first element
-    :param n2: last element
-    :return: cutted part of row
-    """
-    cutted = string[n1:n2]
-    return cutted
-
-
 def transform(dfRaw):
     """Transform original dataset.
     
@@ -96,24 +84,25 @@ def transform(dfRaw):
     splitCol = pyspark.sql.functions.split(dfMetaData.value, ' ')
     
     dfMetaData = (dfMetaData.withColumn("jobName",input_file_name())
-                  .withColumn('topicName',splitCol.getItem(0))
+                  .withColumn('topicName', splitCol.getItem(0))
                   .withColumn('topicPartition', splitCol.getItem(1))
-                  .withColumn('currentOffset',splitCol.getItem(3)))
+                  .withColumn('currentOffset', splitCol.getItem(3)))
                   
-    dfMetaData = dfMetaData.select( "topicPartition", "currentOffset")
-    
     getJobNameUDF = udf(getJobName, StringType())
-    cutStringUDF = udf(cutString, StringType())
+    getTopicNameUDF = udf(lambda x:x[1:-2])
     
     dfMetaData = (dfMetaData.withColumn("jobName",
                                 getJobNameUDF(dfMetaData["jobName"]))
               .withColumn("topicName",
-                          cutStringUDF(dfMetaData["topicName"], 1, -2))
+                          getTopicNameUDF(dfMetaData["topicName"]))
               .withColumn("topicPartition",
-                          cutStringUDF(dfMetaData["topicPartition"], 2, -1))
+                          substring(dfMetaData["topicPartition"], 3, 2))
               .withColumn("currentOffset",
-                          cutStringUDF(dfMetaData["currentOffset"], 1, -2)))
+                          substring(dfMetaData["currentOffset"], 2, 3)))
     
+    dfMetaData = dfMetaData.select("topicName",
+                                   "topicPartition",
+                                   "currentOffset")
     dfTimeData = (dfTimeData
                   .withColumn('row_index',
                               row_number()
@@ -145,8 +134,8 @@ def main():
     """
     spark = startSpark()
     dfRaw = extractData(spark)
-    dfTransformed = transform(dfRaw, 'output_file.csv')
-    load(dfTransformed)
+    dfTransformed = transform(dfRaw)
+    load(dfTransformed, 'output_file.csv')
     
 if __name__ == '__main__':
     main()

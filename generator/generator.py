@@ -72,7 +72,7 @@ def generateCommitInfo(topic, partition):
     :return: data for logs
     """
     MAX_OFFSET = 200
-    offset = random.choice(range(1, MAX_OFFSET))
+    offset = random.choice(range(100, MAX_OFFSET))
     commit = '"{topic}": {{"{partition}" :'\
             ' "{offset}"}}'.format(topic=topic,
                                    partition=partition,
@@ -106,7 +106,7 @@ def generateLogs(currentFolder, MAX_PARTITIONS):
     for topic in topics:
         metaData = generateMetaData()
         numberOfPartitions = random.choice(range(1, MAX_PARTITIONS))
-        for partition in range(1, numberOfPartitions):
+        for partition in range(10, numberOfPartitions):
             logName = "log{topic}" \
                 "{partition}.txt".format(topic=topic,
                                          partition=partition)
