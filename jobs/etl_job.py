@@ -7,17 +7,7 @@ example, this example script can be executed as follows:
     
     $SPARK_HOME/bin/spark-submit \
     --master spark://localhost:7077 \
-    --py-files packages.zip \
-    --files configs/etl_config.json \
     jobs/etl_job.py
-    
-where packages.zip contains Python modules required by ETL job (in
-this example it contains a class to provide access to Spark's logger),
-which need to be made available to each executor process on every node
-in the cluster; etl_config.json is a text file sent to the cluster,
-containing a JSON object with all of the configuration parameters
-required by the ETL job; and, etl_job.py contains the Spark application
-to be executed by a driver process on the Spark master node.
 
 For more details on submitting Spark applications, please see here:
 http://spark.apache.org/docs/latest/submitting-applications.html
@@ -34,13 +24,22 @@ from pyspark.sql.functions import monotonically_increasing_id, \
 from pyspark.sql.window import Window
 
 
-spark = SparkSession.spark = SparkSession.builder \
-    .master("local") \
-    .appName("spark-etl") \
-    .getOrCreate()
+def startSpark(name="spark-etl", master='local[*]'):
+    """Start Spark Sessions
+    
+    :param name: Spark job name
+    :param master: Sets the Spark master URL to connect to
+    :return: SparkSession object
+    """
+    spark = SparkSession.spark = (SparkSession
+                                  .builder
+                                  .master(master)
+                                  .appName(name)
+                                  .getOrCreate())
+    return spark
     
     
-def extractData():
+def extractData(spark):
     """Load data from txt files
     
     :return: Spark DataFrame
@@ -50,29 +49,36 @@ def extractData():
 
 
 def getDate(string):
+    """Get date from row
+    
+    :param string: row in string type
+    :return: date in str type
+    """
     timespamp = string[44:-1]
     date = datetime.datetime.fromtimestamp(int(timespamp)/1000.0)
     return str(date)
 
 
 def getJobName(string):
+    """Extract job name from row
+    
+    :param string: row in string type
+    :return: date in str type
+    """
     job = string.split('/')[6]
     return job
 
 
-def getTopicName(string):
-    topic = string[1:-2]
-    return topic
-
-
-def getTopicPartition(string):
-    partition = string[2:-1]
-    return partition
-
-
-def getCurrentOffset(string):
-    offset = string[1:-2]
-    return offset
+def cutString(string, n1, n2):
+    """Cuts row
+    
+    :param string: row
+    :param n1: first element
+    :param n2: last element
+    :return: cutted part of row
+    """
+    cutted = string[n1:n2]
+    return cutted
 
 
 def transform(dfRaw):
@@ -81,58 +87,55 @@ def transform(dfRaw):
     :param dfRaw: Original Spark DataFrame
     :return: Transformed Spark DataFrame
     """
-    dfTime = dfRaw.filter(dfRaw.value.startswith('{'))
+    dfTimeData = dfRaw.filter(dfRaw.value.startswith('{'))
     getDateUDF = udf(getDate, StringType())
-    dfTime = dfTime.withColumn("datetimeUtc", 
-            getDateUDF(dfTime["value"])).select("datetimeUtc")
+    dfTimeData = dfTimeData.withColumn("datetimeUtc", 
+            getDateUDF(dfTimeData["value"])).select("datetimeUtc")
     
-    dfMeta = dfRaw.filter(dfRaw.value.startswith('"'))
-    splitCol = pyspark.sql.functions.split(dfMeta.value, ' ')
+    dfMetaData = dfRaw.filter(dfRaw.value.startswith('"'))
+    splitCol = pyspark.sql.functions.split(dfMetaData.value, ' ')
     
-    dfMeta = dfMeta.withColumn("jobName",
-                               input_file_name())
-    dfMeta = dfMeta.withColumn('topicName',
-                               splitCol.getItem(0))
-    dfMeta = dfMeta.withColumn('topicPartition',
-                               splitCol.getItem(1))
-    dfMeta = dfMeta.withColumn('currentOffset',
-                               splitCol.getItem(3))
-    dfMeta = dfMeta.select("jobName", "topicName",
-                           "topicPartition", "currentOffset")
+    dfMetaData = (dfMetaData.withColumn("jobName",input_file_name())
+                  .withColumn('topicName',splitCol.getItem(0))
+                  .withColumn('topicPartition', splitCol.getItem(1))
+                  .withColumn('currentOffset',splitCol.getItem(3)))
+                  
+    dfMetaData = dfMetaData.select( "topicPartition", "currentOffset")
     
     getJobNameUDF = udf(getJobName, StringType())
-    getTopicNameUDF = udf(getTopicName, StringType())
-    getTopicPartitionUDF = udf(getTopicPartition, StringType())
-    getCurrentOffsetUDF = udf(getCurrentOffset, StringType())
+    cutStringUDF = udf(cutString, StringType())
     
-    dfMeta=dfMeta.withColumn("jobName",
-                             getJobNameUDF(dfMeta["jobName"]))
-    dfMeta=dfMeta.withColumn("topicName",
-                             getTopicNameUDF(dfMeta["topicName"]))
-    dfMeta=dfMeta.withColumn("topicPartition",
-                    getTopicPartitionUDF(dfMeta["topicPartition"]))
-    dfMeta=dfMeta.withColumn("currentOffset",
-                    getCurrentOffsetUDF(dfMeta["currentOffset"]))
+    dfMetaData = (dfMetaData.withColumn("jobName",
+                                getJobNameUDF(dfMetaData["jobName"]))
+              .withColumn("topicName",
+                          cutStringUDF(dfMetaData["topicName"], 1, -2))
+              .withColumn("topicPartition",
+                          cutStringUDF(dfMetaData["topicPartition"], 2, -1))
+              .withColumn("currentOffset",
+                          cutStringUDF(dfMetaData["currentOffset"], 1, -2)))
     
-    dfTime=dfTime.withColumn('row_index',
-    row_number().over(Window.orderBy(monotonically_increasing_id())))
+    dfTimeData = (dfTimeData
+                  .withColumn('row_index',
+                              row_number()
+                              .over(Window
+                                    .orderBy(monotonically_increasing_id()))))
     
-    dfMeta=dfMeta.withColumn('row_index',
+    dfMetaData = dfMetaData.withColumn('row_index',
     row_number().over(Window.orderBy(monotonically_increasing_id())))
 
-    dfFinal = dfTime.join(dfMeta,
-                          on=["row_index"]).drop("row_index")
+    dfFinal = dfTimeData.join(dfMetaData,
+                              on=["row_index"]).drop("row_index")
     
     return dfFinal
 
 
-def load(dfTransformed):
+def load(dfTransformed, OutputFile):
     """Saves DataFrame into csv
     
     :param dfTransformed: Df to be saved
     :return: None
     """
-    dfTransformed.toPandas().to_csv('output_file.csv')
+    dfTransformed.toPandas().to_csv(OutputFile)
     
     
 def main():
@@ -140,8 +143,9 @@ def main():
     
     :return: None
     """
-    dfRaw = extractData()
-    dfTransformed = transform(dfRaw)
+    spark = startSpark()
+    dfRaw = extractData(spark)
+    dfTransformed = transform(dfRaw, 'output_file.csv')
     load(dfTransformed)
     
 if __name__ == '__main__':
